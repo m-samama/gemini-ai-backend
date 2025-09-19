@@ -12,3 +12,11 @@ yarn-error.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Optional: build / coverage folders
+dist/
+build/
+coverage/
+
+# VS Code settings
+.vscode/
