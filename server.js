@@ -17,27 +17,18 @@ app.post("/chat", async (req, res) => {
     const message = req.body?.message || req.body?.user_input;
     const topic = req.body?.topic || "general";
     const language = req.body?.language || "en";
-    const mode = req.body?.mode || "chat"; // ✅ NEW flag
+    const mode = req.body?.mode || "chat"; // chat | evaluate
 
     if (!message || message.trim() === "") {
       return res.status(400).json({ error: "Message is required in body" });
     }
 
-    console.log(
-      "📝 User:",
-      message,
-      "| Topic:",
-      topic,
-      "| Lang:",
-      language,
-      "| Mode:",
-      mode
-    );
+    console.log("📝 User:", message, "| Topic:", topic, "| Lang:", language, "| Mode:", mode);
 
     let systemPrompt = "";
 
     if (mode === "evaluate") {
-      // ✅ Special evaluator mode (no topic restrictions)
+      // ✅ Evaluation Mode
       systemPrompt = `
 You are an AI English evaluator.
 Analyze the user's response and return ONLY valid JSON.
@@ -52,7 +43,7 @@ Format:
 Do NOT add explanations outside JSON.
 `;
     } else {
-      // ✅ Normal chat with topic restrictions
+      // ✅ Normal Chat Mode
       if (language === "ur") {
         systemPrompt = `
 تم ایک انگریزی بولنے والے پارٹنر ہو۔ لیکن ہمیشہ جوابات اردو میں دو تاکہ یوزر کو سمجھ آئے۔
@@ -81,23 +72,41 @@ The user has selected this topic: "${topic}".
     let aiReply = "Sorry, could not generate a response.";
 
     try {
-      const result = await model.generateContent(
-        `${systemPrompt}\nUser: ${message}`
-      );
+      const result = await model.generateContent(`${systemPrompt}\nUser: ${message}`);
       if (result?.response?.text) {
-        aiReply = result.response.text();
+        aiReply = result.response.text().trim();
       }
     } catch (gemError) {
       console.error("Gemini API Error:", gemError);
-      aiReply = "Gemini API error occurred.";
+      return res.status(500).json({ error: "Gemini API error", details: gemError.message });
     }
 
-    res.json({ reply: aiReply, topic, language, mode });
+    // ✅ Differentiate response based on mode
+    if (mode === "evaluate") {
+      try {
+        // Parse AI reply as JSON (strict)
+        const parsed = JSON.parse(aiReply);
+        return res.json(parsed);
+      } catch (e) {
+        console.error("❌ JSON Parse Error:", e.message, "| AI Reply:", aiReply);
+        return res.status(500).json({
+          error: "Invalid JSON returned from AI",
+          raw: aiReply
+        });
+      }
+    } else {
+      // Normal Chat Mode Response
+      return res.json({
+        reply: aiReply,
+        topic,
+        language,
+        mode
+      });
+    }
+
   } catch (error) {
     console.error("Server Error:", error);
-    res
-      .status(500)
-      .json({ error: "Something went wrong", details: error.message });
+    res.status(500).json({ error: "Something went wrong", details: error.message });
   }
 });
 
