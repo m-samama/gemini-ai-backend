@@ -1,8 +1,9 @@
-import express from "express";
-import bodyParser from "body-parser";
-import cors from "cors";
-import dotenv from "dotenv";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// server.js (CommonJS version)
+const express = require("express");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+const dotenv = require("dotenv");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 dotenv.config();
 const app = express();
@@ -27,19 +28,22 @@ app.post("/chat", async (req, res) => {
     let systemPrompt = "";
 
     if (mode === "evaluate") {
+      // ✅ Evaluation Mode
       systemPrompt = `
 You are an AI English evaluator.
-Return ONLY valid JSON in this exact format:
+Analyze the user's response and return ONLY valid JSON.
+Format:
 {
   "fluency_score": number (0-100),
   "grammar_score": number (0-100),
   "pronunciation_score": number (0-100),
-  "new_words": ["word1", "word2"],
+  "new_words": [ "word1", "word2" ],
   "ai_feedback": "short constructive feedback"
 }
-No explanations, no markdown, no text outside JSON.
+Do NOT add explanations outside JSON.
 `;
     } else {
+      // ✅ Normal Chat Mode
       if (language === "ur") {
         systemPrompt = `
 تم ایک انگریزی بولنے والے پارٹنر ہو۔ لیکن ہمیشہ جوابات اردو میں دو تاکہ یوزر کو سمجھ آئے۔
@@ -65,23 +69,22 @@ The user has selected this topic: "${topic}".
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    let aiReply = "";
+    let aiReply = "Sorry, could not generate a response.";
+
     try {
       const result = await model.generateContent(`${systemPrompt}\nUser: ${message}`);
-      aiReply = result?.response?.text?.trim() || "";
+      if (result?.response?.text) {
+        aiReply = result.response.text().trim();
+      }
     } catch (gemError) {
       console.error("Gemini API Error:", gemError);
       return res.status(500).json({ error: "Gemini API error", details: gemError.message });
     }
 
-    // ✅ Handle Evaluation Mode
+    // ✅ Differentiate response based on mode
     if (mode === "evaluate") {
       try {
-        // Extract JSON only (remove extra text if Gemini added anything)
-        const jsonMatch = aiReply.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error("No JSON found in AI response");
-
-        const parsed = JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(aiReply);
         return res.json(parsed);
       } catch (e) {
         console.error("❌ JSON Parse Error:", e.message, "| AI Reply:", aiReply);
@@ -90,15 +93,14 @@ The user has selected this topic: "${topic}".
           raw: aiReply
         });
       }
+    } else {
+      return res.json({
+        reply: aiReply,
+        topic,
+        language,
+        mode
+      });
     }
-
-    // ✅ Normal Chat Mode
-    return res.json({
-      reply: aiReply || "Sorry, I could not generate a response.",
-      topic,
-      language,
-      mode
-    });
 
   } catch (error) {
     console.error("Server Error:", error);
